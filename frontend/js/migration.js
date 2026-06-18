@@ -124,10 +124,18 @@ function initMigrationPage() {
       appendLog('Preparing file import...');
 
       const fileInput = document.getElementById('source-file');
-      const file = fileInput ? fileInput.files[0] : null;
+      console.log('File input element:', fileInput);
+      console.log('File input type:', fileInput?.type);
+      console.log('File input files:', fileInput?.files);
+      console.log('Files count:', fileInput?.files?.length);
+      
+      const file = fileInput && fileInput.files && fileInput.files.length > 0 ? fileInput.files[0] : null;
+      
+      console.log('Selected file:', file);
 
-      if (!file) {
-        appendLog('<span class="status-error">Please select a file to import.</span>');
+      if (!file || !file.name) {
+        appendLog('<span class="status-error">❌ Please select a file to import. No file was found in the input.</span>');
+        appendLog(`<span class="status-warning">Debug info: File input exists: ${!!fileInput}, Files array: ${fileInput?.files?.length || 0}</span>`);
         isSubmitting = false;
         if (submitBtn) submitBtn.disabled = false;
         return;
@@ -197,16 +205,27 @@ function bindFileUploader() {
   const filePreview = document.getElementById('file-preview');
   const dropZone = document.getElementById('drop-zone');
 
-  if (!uploadInput) return;
+  if (!uploadInput) {
+    console.warn('File input element not found');
+    return;
+  }
 
-  uploadInput.addEventListener('change', () => {
+  uploadInput.addEventListener('change', (e) => {
+    console.log('File input change event:', e.target.files);
     const file = uploadInput.files[0];
-    updateFilePreview(file, filePreview);
+    if (file) {
+      updateFilePreview(file, filePreview);
+      console.log('File selected:', file.name, file.size, file.type);
+    } else {
+      console.log('No file selected');
+      updateFilePreview(null, filePreview);
+    }
   });
 
   if (dropZone) {
     dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       dropZone.classList.add('drag-over');
     });
 
@@ -216,25 +235,39 @@ function bindFileUploader() {
 
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       dropZone.classList.remove('drag-over');
       const file = e.dataTransfer.files[0];
       if (file) {
+        console.log('File dropped:', file.name, file.size, file.type);
         // Transfer the dropped file to the file input
         const dt = new DataTransfer();
         dt.items.add(file);
         uploadInput.files = dt.files;
         updateFilePreview(file, filePreview);
+        // Trigger change event to ensure consistency
+        uploadInput.dispatchEvent(new Event('change', { bubbles: true }));
       }
     });
   }
 }
 
 function updateFilePreview(file, previewEl) {
-  if (!file || !previewEl) return;
+  if (!previewEl) return;
+  
+  if (!file) {
+    previewEl.innerHTML = '📭 <em>No file selected.</em>';
+    previewEl.style.color = 'var(--muted)';
+    return;
+  }
+  
   const ext = file.name.split('.').pop().toLowerCase();
   const sizeKB = (file.size / 1024).toFixed(1);
   const typeLabel = ext === 'sql' ? '🗄 SQL Dump' : ext === 'csv' ? '📄 CSV' : ext === 'json' ? '📋 JSON' : '📊 Excel';
-  previewEl.innerHTML = `${typeLabel} &nbsp;·&nbsp; <strong>${file.name}</strong> &nbsp;·&nbsp; ${sizeKB} KB`;
+  
+  previewEl.innerHTML = `✅ ${typeLabel} &nbsp;·&nbsp; <strong>${file.name}</strong> &nbsp;·&nbsp; ${sizeKB} KB`;
+  previewEl.style.color = 'var(--success)';
+  console.log('File preview updated:', { name: file.name, size: sizeKB, type: typeLabel });
 }
 
 /* ---------- Test Connection ---------- */
@@ -356,11 +389,18 @@ function resetProgress() {
   const progress = document.getElementById('migration-progress-fill');
   const progressText = document.getElementById('migration-progress-status');
   const logs = document.getElementById('migration-logs');
+  const progressPanel = document.querySelector('.progress-panel');
+  
   if (progress) { progress.style.width = '0%'; progress.style.background = ''; }
-  if (progressText) progressText.textContent = 'Pending';
+  if (progressText) progressText.textContent = 'Running';
   const pct = document.getElementById('migration-progress-percentage');
   if (pct) pct.textContent = '0%';
   if (logs) logs.innerHTML = '<p class="log-line">Initializing migration...</p>';
+  
+  // Scroll to progress panel
+  if (progressPanel) {
+    progressPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 function appendLog(message) {
@@ -400,21 +440,60 @@ function simulateMigrationProgress() {
   const progress = document.getElementById('migration-progress-fill');
   const progressText = document.getElementById('migration-progress-status');
   const logs = document.getElementById('migration-logs');
+  const progressPanel = document.querySelector('.progress-panel');
+  
   let percentage = 0;
+  const statuses = [
+    'Validating connection...',
+    'Preparing data...',
+    'Migrating rows...',
+    'Verifying integrity...',
+    'Finalizing...'
+  ];
+  let statusIndex = 0;
+  
+  // Keep scroll to progress panel
+  if (progressPanel) {
+    progressPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  
   const interval = setInterval(() => {
-    percentage += Math.floor(Math.random() * 12) + 8;
-    if (percentage > 100) percentage = 100;
-    if (progress) progress.style.width = `${percentage}%`;
-    if (progressText) progressText.textContent = percentage < 100 ? 'Running' : 'Completed';
+    percentage += Math.floor(Math.random() * 15) + 5;
+    if (percentage > 95) percentage = 95;
+    
+    if (progress) {
+      progress.style.width = `${percentage}%`;
+      progress.style.background = '#4f46e5';
+    }
+    
+    if (progressText) progressText.textContent = 'Running';
+    
     const progressNumber = document.getElementById('migration-progress-percentage');
     if (progressNumber) progressNumber.textContent = `${percentage}%`;
+    
     if (logs) {
-      logs.innerHTML += `<p class="log-line">${percentage}% completed... checking connection and migrating rows.</p>`;
+      const status = statuses[Math.floor((percentage / 100) * statuses.length)] || statuses[statuses.length - 1];
+      logs.innerHTML += `<p class="log-line">⏳ ${status} (${percentage}%)</p>`;
       logs.scrollTop = logs.scrollHeight;
     }
-    if (percentage >= 100) {
+    
+    if (percentage >= 95) {
       clearInterval(interval);
-      if (logs) logs.innerHTML += '<p class="log-line status-success">Migration completed successfully.</p>';
+      
+      if (progress) {
+        progress.style.width = '100%';
+        progress.style.background = '#10b981';
+      }
+      
+      if (progressText) progressText.textContent = 'Completed';
+      
+      const progressNumber = document.getElementById('migration-progress-percentage');
+      if (progressNumber) progressNumber.textContent = '100%';
+      
+      if (logs) {
+        logs.innerHTML += '<p class="log-line status-success">✅ Migration completed successfully!</p>';
+        logs.scrollTop = logs.scrollHeight;
+      }
     }
-  }, 700);
+  }, 500);
 }
