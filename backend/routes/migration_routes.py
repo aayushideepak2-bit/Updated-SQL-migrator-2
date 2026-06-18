@@ -151,7 +151,7 @@ class FileImportResource(Resource):
 
         try:
             migration_record = Migration(
-                migration_type="file_import",
+                migration_type="file_to_sql",
                 source_db=os.path.basename(file_path),
                 target_db=payload.get("target_database") or "sqlite (default)",
                 status="running",
@@ -164,13 +164,17 @@ class FileImportResource(Resource):
             migration_record.status = "completed"
             db.session.commit()
 
+            # Use a consistent migration_type for frontend/tests (`file_to_sql`)
+            # and include the import_type (tabular/sql_dump) inside the
+            # stored report_summary for detail.
             history = MigrationHistory(
-                migration_type=import_result.get("import_type", "file_import"),
+                migration_type="file_to_sql",
                 source_db=import_result.get("file_name"),
                 target_db=import_result.get("target_database"),
                 status="completed",
                 errors=None,
                 report_summary=json.dumps({
+                    "import_type": import_result.get("import_type"),
                     "table_name": import_result.get("table_name"),
                     "rows_imported": import_result.get("rows_imported"),
                     "rows_failed": import_result.get("rows_failed"),
@@ -184,7 +188,7 @@ class FileImportResource(Resource):
             return {"message": "File import completed.", "result": import_result}, 200
         except FileNotFoundError:
             history = MigrationHistory(
-                migration_type="file_import",
+                migration_type="file_to_sql",
                 source_db=file_path,
                 target_db=payload.get("target_database"),
                 status="failed",
@@ -196,7 +200,7 @@ class FileImportResource(Resource):
             return {"message": f"File not found: {file_path}"}, 404
         except Exception as exc:
             history = MigrationHistory(
-                migration_type="file_import",
+                migration_type="file_to_sql",
                 source_db=file_path,
                 target_db=payload.get("target_database"),
                 status="failed",
