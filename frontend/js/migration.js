@@ -431,13 +431,19 @@ function handleMigrationResponse(response) {
   // Backend error responses come in two forms:
   // 1. { "message": "Migration failed.", "error": "..." } (500 errors)
   // 2. { "message": "source_table is required." } (400 errors — no `error` key)
+  
+  console.log('handleMigrationResponse called with:', response);
+  
   const isError = response.error
     || (!response.report && !response.result && response.message &&
         /required|failed|error|not found|invalid|denied|placeholder/i.test(response.message));
 
   if (isError) {
     const errorDetail = response.error || response.message || 'Unknown error';
-    appendLog(`<span class="status-error">❌ Error: ${escapeHtml(errorDetail)}</span>`);
+    appendLog(`<span class="status-error">❌ Error: ${escapeHtml(String(errorDetail))}</span>`);
+    if (response.detail) {
+      appendLog(`<span class="status-error">📋 Details: ${escapeHtml(String(response.detail))}</span>`);
+    }
     console.error('Migration error response:', response);
     const progressText = document.getElementById('migration-progress-status');
     if (progressText) progressText.textContent = 'Failed';
