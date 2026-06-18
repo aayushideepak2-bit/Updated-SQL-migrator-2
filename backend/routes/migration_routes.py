@@ -1,6 +1,7 @@
 from flask import request
 from flask_restful import Resource
 from werkzeug.utils import secure_filename
+import os
 
 from backend.models.migration_model import Migration
 from backend.models.history_model import MigrationHistory
@@ -51,7 +52,7 @@ class SqlToSqlResource(Resource):
         db.session.commit()
 
         try:
-            report_data = migrate_sql_to_sql(payload)
+            report_data = migrate_sql_to_sql(payload, migration_id=migration_record.id)
             migration_record.status = "completed"
             report = Report(
                 migration_id=migration_record.id,
@@ -149,7 +150,20 @@ class FileImportResource(Resource):
             return {"message": "Replace placeholder file path with a real file path."}, 400
 
         try:
-            import_result = import_file_to_sql(payload)
+            migration_record = Migration(
+                migration_type="file_import",
+                source_db=os.path.basename(file_path),
+                target_db=payload.get("target_database") or "sqlite (default)",
+                status="running",
+            )
+            db.session.add(migration_record)
+            db.session.commit()
+
+            import_result = import_file_to_sql(payload, migration_id=migration_record.id)
+
+            migration_record.status = "completed"
+            db.session.commit()
+
             history = MigrationHistory(
                 migration_type=import_result.get("import_type", "file_import"),
                 source_db=import_result.get("file_name"),
@@ -159,11 +173,14 @@ class FileImportResource(Resource):
                 report_summary=json.dumps({
                     "table_name": import_result.get("table_name"),
                     "rows_imported": import_result.get("rows_imported"),
+                    "rows_failed": import_result.get("rows_failed"),
+                    "rows_cancelled": import_result.get("rows_cancelled"),
                     "schema_sql": import_result.get("schema_sql"),
                 }, default=str),
             )
             db.session.add(history)
             db.session.commit()
+            import_result["migration_id"] = migration_record.id
             return {"message": "File import completed.", "result": import_result}, 200
         except FileNotFoundError:
             history = MigrationHistory(

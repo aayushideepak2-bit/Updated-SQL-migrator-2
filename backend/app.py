@@ -15,6 +15,7 @@ from backend.config import Config
 from backend.extensions import db, jwt
 from backend.auth.auth_routes import RegisterResource, LoginResource, LogoutResource
 from backend.routes.migration_routes import SqlToSqlResource, MigrationStatusResource, MigrationHistoryResource, FileImportResource, SqlExportResource, SchemaGeneratorResource, TestConnectionResource
+# from backend.routes.migration_issues_routes import MigrationRowIssuesResource, MigrationRowIssuesByTableResource, MigrationRetryFailedRowsResource, MigrationSummaryResource
 from backend.routes.history_routes import HistoryListResource, HistoryDeleteResource
 from backend.routes.admin_routes import AdminUserListResource, AdminUserDeleteResource, AdminStatsResource
 from backend.routes.report_routes import ReportResource
@@ -52,6 +53,12 @@ def create_app() -> Flask:
     api.add_resource(SchemaGeneratorResource, "/api/schema/generate")
     api.add_resource(TestConnectionResource, "/api/test-connection")
 
+    # Migration row-issue tracking endpoints (failed/cancelled rows) — disabled for now
+    # api.add_resource(MigrationRowIssuesResource, "/api/migrations/<int:migration_id>/issues")
+    # api.add_resource(MigrationRowIssuesByTableResource, "/api/migrations/<int:migration_id>/issues/<string:table_name>")
+    # api.add_resource(MigrationRetryFailedRowsResource, "/api/migrations/<int:migration_id>/retry")
+    # api.add_resource(MigrationSummaryResource, "/api/migrations/<int:migration_id>/summary")
+
     # History endpoints
     api.add_resource(HistoryListResource, "/api/history")
     api.add_resource(HistoryDeleteResource, "/api/history/<int:history_id>")
@@ -79,3 +86,4 @@ if __name__ == "__main__":
     application = create_app()
     port = int(os.getenv("PORT", 5000))
     application.run(host="0.0.0.0", port=port, debug=True)
+    

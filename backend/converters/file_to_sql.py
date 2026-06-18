@@ -8,6 +8,7 @@ from backend.processors.excel_processor import read_excel_file
 from backend.processors.schema_generator import generate_create_table_schema
 from backend.processors.sql_dump_processor import import_sql_dump
 from backend.utils.file_handler import resolve_upload_path
+from backend.converters.migration_tracker import migrate_with_tracking, persist_migration_issues
 
 # Absolute path to the default SQLite database, resolved relative to this file
 _DEFAULT_SQLITE_DB = os.path.abspath(
@@ -40,7 +41,7 @@ def _read_file(file_path: str) -> pd.DataFrame:
     )
 
 
-def import_file_to_sql(payload: Dict[str, Any]) -> Dict[str, Any]:
+def import_file_to_sql(payload: Dict[str, Any], migration_id: int = None) -> Dict[str, Any]:
     """Import a CSV, JSON, Excel, or SQL dump file into a target database.
 
     For tabular files (.csv/.json/.xlsx/.xls) the data is loaded via pandas
@@ -48,6 +49,10 @@ def import_file_to_sql(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     For SQL dump files (.sql) the statements are executed directly against
     the target engine inside a single transaction (strict mode).
+
+    ``migration_id`` is optional. When provided, failed/cancelled rows are
+    persisted to migration_row_issues so they're queryable later via
+    /api/migrations/<id>/issues.
     """
     file_path = payload.get("file_path")
     if file_path is None:
@@ -91,14 +96,20 @@ def import_file_to_sql(payload: Dict[str, Any]) -> Dict[str, Any]:
     # (e.g. 'selling rate ' with trailing space becomes 'selling rate')
     data_frame.columns = [col.strip() for col in data_frame.columns]
 
-    data_frame.to_sql(table_name, target_engine, if_exists=payload.get("if_exists", "replace"), index=False)
+    # Use tracking migration for better row-level error handling
+    migration_report = migrate_with_tracking(data_frame, target_engine, table_name)
+    if migration_id:
+        persist_migration_issues(migration_report, migration_id)
 
     schema_sql = generate_create_table_schema(file_path, table_name)
     return {
         "import_type": "tabular",
         "file_name": os.path.basename(file_path),
         "table_name": table_name,
-        "rows_imported": int(data_frame.shape[0]),
+        "rows_imported": migration_report["successful_count"],
+        "rows_failed": migration_report["summary"]["failed"],
+        "rows_cancelled": migration_report["summary"]["cancelled"],
         "schema_sql": schema_sql,
         "target_database": target_config.get("database"),
+        "migration_report": migration_report,
     }

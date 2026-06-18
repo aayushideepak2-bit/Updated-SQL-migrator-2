@@ -23,7 +23,7 @@ POSTGRES = {
     "host": "localhost",
     "port": "5432",
     "username": "postgres",
-    "password": "zian2016",
+    "password": "Admin",
     "database": "migrator_test",   # must already exist: CREATE DATABASE migrator_test;
 }
 
@@ -68,9 +68,11 @@ def step_1_file_to_sql():
 
 def step_2_sqlite_to_mysql():
     """Migrate the imported table from SQLite into MySQL."""
+    # Use the absolute path to the backend's default SQLite database
+    sqlite_db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "backend", "database", "app_data.db"))
     payload = {
         "source_db_type": "sqlite",
-        "source_database": None,  # backend defaults to its own app_data.db
+        "source_database": sqlite_db_path,  # Use backend's app_data.db
         "target_db_type": MYSQL["db_type"],
         "target_host": MYSQL["host"],
         "target_port": MYSQL["port"],

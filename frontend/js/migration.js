@@ -10,13 +10,31 @@ function initMigrationPage() {
 
   const tabs = document.querySelectorAll('.migration-tab');
   const panels = document.querySelectorAll('.migration-panel');
+  let tabSwitchEnabled = true;  // Flag to prevent tab switching during submission
+  
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
+      if (!tabSwitchEnabled) {
+        appendLog('<span class="status-warning">Please wait — operation in progress.</span>');
+        return;
+      }
       tabs.forEach((item) => item.classList.remove('active'));
       panels.forEach((panel) => panel.classList.add('hidden'));
       tab.classList.add('active');
       document.getElementById(tab.dataset.target).classList.remove('hidden');
     });
+  });
+
+  // Store tab switch flag for use in form handlers
+  window._tabSwitchEnabled = true;
+  Object.defineProperty(window, '_disableTabSwitch', {
+    set(value) {
+      tabSwitchEnabled = value;
+      tabs.forEach(t => t.disabled = !value);
+    },
+    get() {
+      return !tabSwitchEnabled;
+    }
   });
 
   // NOTE: Do NOT call injectDatabaseOptions here — the HTML already has
@@ -83,8 +101,25 @@ function initMigrationPage() {
 
   // --- File to SQL ---
   if (fileToSqlForm) {
+    // Prevent accidental double submission
+    let isSubmitting = false;
+
     fileToSqlForm.addEventListener('submit', async (event) => {
       event.preventDefault();
+      event.stopPropagation();
+      
+      if (isSubmitting) {
+        appendLog('<span class="status-error">Submission already in progress — please wait.</span>');
+        return;
+      }
+      
+      isSubmitting = true;
+      const submitBtn = fileToSqlForm.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      
+      // Prevent tab switching during submission
+      window._disableTabSwitch = true;
+      
       resetProgress();
       appendLog('Preparing file import...');
 
@@ -93,6 +128,8 @@ function initMigrationPage() {
 
       if (!file) {
         appendLog('<span class="status-error">Please select a file to import.</span>');
+        isSubmitting = false;
+        if (submitBtn) submitBtn.disabled = false;
         return;
       }
 
@@ -116,20 +153,33 @@ function initMigrationPage() {
       }
 
       appendLog(`Importing to ${payload.get('target_db_type')}...`);
-      const response = await apiRequest('/import/file-to-sql', 'POST', payload);
-      handleMigrationResponse(response);
+      
+      try {
+        const response = await apiRequest('/import/file-to-sql', 'POST', payload);
+        handleMigrationResponse(response);
 
-      // Show extra details for successful imports
-      if (response && response.result) {
-        const r = response.result;
-        if (r.import_type === 'sql_dump') {
-          appendLog(`✅ SQL dump executed: <strong>${r.statements_executed}</strong> statements, <strong>${r.statements_skipped}</strong> skipped.`);
-        } else if (r.rows_imported != null) {
-          appendLog(`✅ Imported <strong>${r.rows_imported}</strong> rows into <code>${r.table_name}</code>.`);
-          if (r.schema_sql) {
-            appendLog(`<details><summary style="cursor:pointer;color:var(--accent)">View generated schema SQL</summary><pre style="margin-top:8px;overflow:auto">${escapeHtml(r.schema_sql)}</pre></details>`);
+        // Show extra details for successful imports
+        if (response && response.result) {
+          const r = response.result;
+          if (r.import_type === 'sql_dump') {
+            appendLog(`✅ SQL dump executed: <strong>${r.statements_executed}</strong> statements, <strong>${r.statements_skipped}</strong> skipped.`);
+          } else if (r.rows_imported != null) {
+            appendLog(`✅ Imported <strong>${r.rows_imported}</strong> rows into <code>${r.table_name}</code>.`);
+            if (r.schema_sql) {
+              appendLog(`<details><summary style="cursor:pointer;color:var(--accent)">View generated schema SQL</summary><pre style="margin-top:8px;overflow:auto">${escapeHtml(r.schema_sql)}</pre></details>`);
+            }
           }
         }
+      } catch (err) {
+        appendLog(`<span class="status-error">Request failed: ${escapeHtml(err.message)}</span>`);
+        const progressText = document.getElementById('migration-progress-status');
+        if (progressText) progressText.textContent = 'Failed';
+        const progress = document.getElementById('migration-progress-fill');
+        if (progress) { progress.style.width = '100%'; progress.style.background = '#ef4444'; }
+      } finally {
+        isSubmitting = false;
+        window._disableTabSwitch = false;  // Re-enable tab switching
+        if (submitBtn) submitBtn.disabled = false;
       }
     });
   }
@@ -331,7 +381,8 @@ function handleMigrationResponse(response) {
 
   if (isError) {
     const errorDetail = response.error || response.message || 'Unknown error';
-    appendLog(`<span class="status-error">Error: ${escapeHtml(errorDetail)}</span>`);
+    appendLog(`<span class="status-error">❌ Error: ${escapeHtml(errorDetail)}</span>`);
+    console.error('Migration error response:', response);
     const progressText = document.getElementById('migration-progress-status');
     if (progressText) progressText.textContent = 'Failed';
     const progress = document.getElementById('migration-progress-fill');
@@ -339,7 +390,8 @@ function handleMigrationResponse(response) {
     const pct = document.getElementById('migration-progress-percentage');
     if (pct) pct.textContent = '100%';
   } else {
-    if (response.message) appendLog(response.message);
+    if (response.message) appendLog(`ℹ️ ${response.message}`);
+    console.log('Migration response:', response);
     simulateMigrationProgress();
   }
 }

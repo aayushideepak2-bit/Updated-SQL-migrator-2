@@ -6,6 +6,7 @@ import pandas as pd
 from backend.database.connection_manager import create_engine_for_config
 from backend.validators.migration_validator import validate_table_counts
 from backend.converters.datatype_mapper import map_datatype
+from backend.converters.migration_tracker import migrate_with_tracking, persist_migration_issues
 
 
 def build_table_schema(source_engine, table_name: str, target_db_type: str) -> Table:
@@ -26,8 +27,15 @@ def build_table_schema(source_engine, table_name: str, target_db_type: str) -> T
     return Table(table_name, target_meta, *columns)
 
 
-def migrate_sql_to_sql(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Perform a SQL-to-SQL migration workflow between two databases."""
+def migrate_sql_to_sql(payload: Dict[str, Any], migration_id: int = None) -> Dict[str, Any]:
+    """Perform a SQL-to-SQL migration workflow between two databases.
+
+    ``migration_id`` is optional — when provided (i.e. the caller already
+    created a Migration record), any failed/cancelled rows are persisted to
+    the migration_row_issues table so they're visible via
+    /api/migrations/<id>/issues. Without it, tracking still happens but stays
+    in-memory only (returned in the response, not queryable later).
+    """
     source_config = {
         "db_type": payload.get("source_db_type"),
         "username": payload.get("source_username"),
@@ -67,14 +75,27 @@ def migrate_sql_to_sql(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             data_frame = pd.read_sql_table(table_name, source_engine)
             if not data_frame.empty:
-                data_frame.to_sql(table_name, target_engine, if_exists="append", index=False)
-            validation = validate_table_counts(source_engine, target_engine, table_name)
-            summary.append({
-                "table": table_name,
-                "rows_transferred": int(data_frame.shape[0]),
-                "validation": validation,
-                "status": "completed",
-            })
+                # Use tracking migration for row-level error handling
+                migration_report = migrate_with_tracking(data_frame, target_engine, table_name)
+                if migration_id:
+                    persist_migration_issues(migration_report, migration_id)
+                validation = validate_table_counts(source_engine, target_engine, table_name)
+                summary.append({
+                    "table": table_name,
+                    "rows_transferred": migration_report["successful_count"],
+                    "rows_failed": migration_report["summary"]["failed"],
+                    "rows_cancelled": migration_report["summary"]["cancelled"],
+                    "validation": validation,
+                    "migration_report": migration_report,
+                    "status": "completed",
+                })
+            else:
+                summary.append({
+                    "table": table_name,
+                    "rows_transferred": 0,
+                    "validation": {"source_row_count": 0, "target_row_count": 0, "match": True},
+                    "status": "completed",
+                })
         except SQLAlchemyError as error:
             summary.append({"table": table_name, "status": "failed", "error": str(error)})
 

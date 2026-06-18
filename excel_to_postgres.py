@@ -16,8 +16,11 @@ if not os.path.exists(excel_path):
         "Set EXCEL_FILE_PATH in .env or place the file next to this script."
     )
 
-print(f"Loading Excel file: {excel_path}")
-df = pd.read_excel(excel_path, sheet_name=0)
+print(f"Loading file: {excel_path}")
+if excel_path.endswith('.csv'):
+    df = pd.read_csv(excel_path)
+else:
+    df = pd.read_excel(excel_path, sheet_name=0)
 
 engine = create_engine(database_url)
 

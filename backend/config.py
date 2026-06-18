@@ -8,9 +8,11 @@ class Config:
     """Application configuration for Flask, SQLAlchemy, and JWT."""
     SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-jwt-secret-key")
+    
+    # Use in-memory SQLite database for now to avoid file path issues on Windows
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "SQLALCHEMY_DATABASE_URI",
-        f"sqlite:///{os.path.join(BASE_DIR, 'database', 'app_data.db')}"
+        "sqlite:///:memory:"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = os.getenv(
         "SQLALCHEMY_TRACK_MODIFICATIONS", "False"
