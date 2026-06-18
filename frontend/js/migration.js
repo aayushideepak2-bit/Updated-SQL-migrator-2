@@ -49,6 +49,9 @@ function initMigrationPage() {
   if (sqlToSqlForm) {
     sqlToSqlForm.addEventListener('submit', async (event) => {
       event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      
       resetProgress();
       appendLog('Collecting connection details...');
 
@@ -71,13 +74,18 @@ function initMigrationPage() {
       appendLog(`Connecting to source (${payload.source_db_type}://${payload.source_host})...`);
       const response = await apiRequest('/migration/sql-to-sql', 'POST', payload);
       handleMigrationResponse(response);
-    });
+      
+      return false;
+    }, false);
   }
 
   // --- SQL to File ---
   if (sqlToFileForm) {
     sqlToFileForm.addEventListener('submit', async (event) => {
       event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      
       resetProgress();
       appendLog('Preparing export...');
 
@@ -96,17 +104,23 @@ function initMigrationPage() {
       appendLog(`Exporting from ${payload.source_db_type}...`);
       const response = await apiRequest('/export/sql-to-file', 'POST', payload);
       handleMigrationResponse(response);
-    });
+      
+      return false;
+    }, false);
   }
 
   // --- File to SQL ---
   if (fileToSqlForm) {
+    console.log('File to SQL form found, attaching event listener');
+    
     // Prevent accidental double submission
     let isSubmitting = false;
 
     fileToSqlForm.addEventListener('submit', async (event) => {
+      console.log('File to SQL form submit event fired', event);
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       
       if (isSubmitting) {
         appendLog('<span class="status-error">Submission already in progress — please wait.</span>');
@@ -125,9 +139,7 @@ function initMigrationPage() {
 
       const fileInput = document.getElementById('source-file');
       console.log('File input element:', fileInput);
-      console.log('File input type:', fileInput?.type);
       console.log('File input files:', fileInput?.files);
-      console.log('Files count:', fileInput?.files?.length);
       
       const file = fileInput && fileInput.files && fileInput.files.length > 0 ? fileInput.files[0] : null;
       
@@ -138,6 +150,7 @@ function initMigrationPage() {
         appendLog(`<span class="status-warning">Debug info: File input exists: ${!!fileInput}, Files array: ${fileInput?.files?.length || 0}</span>`);
         isSubmitting = false;
         if (submitBtn) submitBtn.disabled = false;
+        window._disableTabSwitch = false;
         return;
       }
 
@@ -163,7 +176,9 @@ function initMigrationPage() {
       appendLog(`Importing to ${payload.get('target_db_type')}...`);
       
       try {
+        console.log('Sending file import request to /import/file-to-sql');
         const response = await apiRequest('/import/file-to-sql', 'POST', payload);
+        console.log('File import response:', response);
         handleMigrationResponse(response);
 
         // Show extra details for successful imports
@@ -179,6 +194,7 @@ function initMigrationPage() {
           }
         }
       } catch (err) {
+        console.error('File import error:', err);
         appendLog(`<span class="status-error">Request failed: ${escapeHtml(err.message)}</span>`);
         const progressText = document.getElementById('migration-progress-status');
         if (progressText) progressText.textContent = 'Failed';
@@ -189,7 +205,7 @@ function initMigrationPage() {
         window._disableTabSwitch = false;  // Re-enable tab switching
         if (submitBtn) submitBtn.disabled = false;
       }
-    });
+    }, false);
   }
 
   // File upload preview + drag-and-drop
