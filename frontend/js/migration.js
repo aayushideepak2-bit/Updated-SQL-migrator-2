@@ -124,10 +124,18 @@ function initMigrationPage() {
       appendLog('Preparing file import...');
 
       const fileInput = document.getElementById('source-file');
-      const file = fileInput ? fileInput.files[0] : null;
+      console.log('File input element:', fileInput);
+      console.log('File input type:', fileInput?.type);
+      console.log('File input files:', fileInput?.files);
+      console.log('Files count:', fileInput?.files?.length);
+      
+      const file = fileInput && fileInput.files && fileInput.files.length > 0 ? fileInput.files[0] : null;
+      
+      console.log('Selected file:', file);
 
-      if (!file) {
-        appendLog('<span class="status-error">Please select a file to import.</span>');
+      if (!file || !file.name) {
+        appendLog('<span class="status-error">❌ Please select a file to import. No file was found in the input.</span>');
+        appendLog(`<span class="status-warning">Debug info: File input exists: ${!!fileInput}, Files array: ${fileInput?.files?.length || 0}</span>`);
         isSubmitting = false;
         if (submitBtn) submitBtn.disabled = false;
         return;
@@ -197,16 +205,27 @@ function bindFileUploader() {
   const filePreview = document.getElementById('file-preview');
   const dropZone = document.getElementById('drop-zone');
 
-  if (!uploadInput) return;
+  if (!uploadInput) {
+    console.warn('File input element not found');
+    return;
+  }
 
-  uploadInput.addEventListener('change', () => {
+  uploadInput.addEventListener('change', (e) => {
+    console.log('File input change event:', e.target.files);
     const file = uploadInput.files[0];
-    updateFilePreview(file, filePreview);
+    if (file) {
+      updateFilePreview(file, filePreview);
+      console.log('File selected:', file.name, file.size, file.type);
+    } else {
+      console.log('No file selected');
+      updateFilePreview(null, filePreview);
+    }
   });
 
   if (dropZone) {
     dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       dropZone.classList.add('drag-over');
     });
 
@@ -216,25 +235,39 @@ function bindFileUploader() {
 
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       dropZone.classList.remove('drag-over');
       const file = e.dataTransfer.files[0];
       if (file) {
+        console.log('File dropped:', file.name, file.size, file.type);
         // Transfer the dropped file to the file input
         const dt = new DataTransfer();
         dt.items.add(file);
         uploadInput.files = dt.files;
         updateFilePreview(file, filePreview);
+        // Trigger change event to ensure consistency
+        uploadInput.dispatchEvent(new Event('change', { bubbles: true }));
       }
     });
   }
 }
 
 function updateFilePreview(file, previewEl) {
-  if (!file || !previewEl) return;
+  if (!previewEl) return;
+  
+  if (!file) {
+    previewEl.innerHTML = '📭 <em>No file selected.</em>';
+    previewEl.style.color = 'var(--muted)';
+    return;
+  }
+  
   const ext = file.name.split('.').pop().toLowerCase();
   const sizeKB = (file.size / 1024).toFixed(1);
   const typeLabel = ext === 'sql' ? '🗄 SQL Dump' : ext === 'csv' ? '📄 CSV' : ext === 'json' ? '📋 JSON' : '📊 Excel';
-  previewEl.innerHTML = `${typeLabel} &nbsp;·&nbsp; <strong>${file.name}</strong> &nbsp;·&nbsp; ${sizeKB} KB`;
+  
+  previewEl.innerHTML = `✅ ${typeLabel} &nbsp;·&nbsp; <strong>${file.name}</strong> &nbsp;·&nbsp; ${sizeKB} KB`;
+  previewEl.style.color = 'var(--success)';
+  console.log('File preview updated:', { name: file.name, size: sizeKB, type: typeLabel });
 }
 
 /* ---------- Test Connection ---------- */
