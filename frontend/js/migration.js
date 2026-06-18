@@ -356,11 +356,18 @@ function resetProgress() {
   const progress = document.getElementById('migration-progress-fill');
   const progressText = document.getElementById('migration-progress-status');
   const logs = document.getElementById('migration-logs');
+  const progressPanel = document.querySelector('.progress-panel');
+  
   if (progress) { progress.style.width = '0%'; progress.style.background = ''; }
-  if (progressText) progressText.textContent = 'Pending';
+  if (progressText) progressText.textContent = 'Running';
   const pct = document.getElementById('migration-progress-percentage');
   if (pct) pct.textContent = '0%';
   if (logs) logs.innerHTML = '<p class="log-line">Initializing migration...</p>';
+  
+  // Scroll to progress panel
+  if (progressPanel) {
+    progressPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 function appendLog(message) {
@@ -400,21 +407,60 @@ function simulateMigrationProgress() {
   const progress = document.getElementById('migration-progress-fill');
   const progressText = document.getElementById('migration-progress-status');
   const logs = document.getElementById('migration-logs');
+  const progressPanel = document.querySelector('.progress-panel');
+  
   let percentage = 0;
+  const statuses = [
+    'Validating connection...',
+    'Preparing data...',
+    'Migrating rows...',
+    'Verifying integrity...',
+    'Finalizing...'
+  ];
+  let statusIndex = 0;
+  
+  // Keep scroll to progress panel
+  if (progressPanel) {
+    progressPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  
   const interval = setInterval(() => {
-    percentage += Math.floor(Math.random() * 12) + 8;
-    if (percentage > 100) percentage = 100;
-    if (progress) progress.style.width = `${percentage}%`;
-    if (progressText) progressText.textContent = percentage < 100 ? 'Running' : 'Completed';
+    percentage += Math.floor(Math.random() * 15) + 5;
+    if (percentage > 95) percentage = 95;
+    
+    if (progress) {
+      progress.style.width = `${percentage}%`;
+      progress.style.background = '#4f46e5';
+    }
+    
+    if (progressText) progressText.textContent = 'Running';
+    
     const progressNumber = document.getElementById('migration-progress-percentage');
     if (progressNumber) progressNumber.textContent = `${percentage}%`;
+    
     if (logs) {
-      logs.innerHTML += `<p class="log-line">${percentage}% completed... checking connection and migrating rows.</p>`;
+      const status = statuses[Math.floor((percentage / 100) * statuses.length)] || statuses[statuses.length - 1];
+      logs.innerHTML += `<p class="log-line">⏳ ${status} (${percentage}%)</p>`;
       logs.scrollTop = logs.scrollHeight;
     }
-    if (percentage >= 100) {
+    
+    if (percentage >= 95) {
       clearInterval(interval);
-      if (logs) logs.innerHTML += '<p class="log-line status-success">Migration completed successfully.</p>';
+      
+      if (progress) {
+        progress.style.width = '100%';
+        progress.style.background = '#10b981';
+      }
+      
+      if (progressText) progressText.textContent = 'Completed';
+      
+      const progressNumber = document.getElementById('migration-progress-percentage');
+      if (progressNumber) progressNumber.textContent = '100%';
+      
+      if (logs) {
+        logs.innerHTML += '<p class="log-line status-success">✅ Migration completed successfully!</p>';
+        logs.scrollTop = logs.scrollHeight;
+      }
     }
-  }, 700);
+  }, 500);
 }
